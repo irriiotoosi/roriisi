@@ -13,6 +13,7 @@ from utils.embeds import (
     build_leaderboard_embed,
     build_points_delta_embed,
     build_role_award_embed,
+    build_points_summary_embed,
 )
 
 
@@ -165,6 +166,28 @@ class Contributions(commands.Cog):
             display_entries.append((member, total))
         title = f"Leaderboard ({'All time' if since is None else span_value})"
         embed = build_leaderboard_embed(title=title, entries=display_entries)
+        await ctx.reply(embed=embed)
+
+    @commands.hybrid_command(name="points", description="Check contribution points for yourself or another member.")
+    @app_commands.describe(user="Member to check (defaults to yourself)", timespan="7d, 30d, or all")
+    @app_commands.choices(timespan=TIMESPAN_CHOICES)
+    async def points(
+        self,
+        ctx: commands.Context,
+        user: Optional[discord.Member] = None,
+        *,
+        timespan: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        assert ctx.guild is not None
+        target: discord.Member | None = user or (ctx.author if isinstance(ctx.author, discord.Member) else None)
+        if target is None:
+            await ctx.reply("Could not resolve the target member.")
+            return
+        span_value = timespan.value if timespan else "all"
+        since = self._compute_since_ts(span_value)
+        total = await self.store.get_user_total(guild_id=ctx.guild.id, user_id=target.id, since_ts=since)
+        label = "All time" if since is None else span_value
+        embed = build_points_summary_embed(member=target, total_points=total, timespan_label=label)
         await ctx.reply(embed=embed)
 
     # -------------- Error handling ----------------

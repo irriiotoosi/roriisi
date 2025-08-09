@@ -51,3 +51,18 @@ def build_leaderboard_embed(
         rank += 1
     embed.description = "\n".join(description_lines) if description_lines else "No contributions yet."
     return embed
+
+
+def build_points_summary_embed(
+    *,
+    member: discord.Member | None,
+    total_points: int,
+    timespan_label: str,
+) -> discord.Embed:
+    title = "Contribution Points"
+    embed = discord.Embed(title=title, color=discord.Color.blue())
+    name = member.mention if member else "<left server>"
+    embed.add_field(name="Member", value=name, inline=True)
+    embed.add_field(name="Total", value=str(total_points), inline=True)
+    embed.set_footer(text=f"Timespan: {timespan_label}")
+    return embed

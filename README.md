@@ -3,7 +3,7 @@
 A modular Discord bot for managing Contribution points using slash/hybrid commands. Designed for Replit hosting and built with Cogs, strict async I/O, and a decoupled config.
 
 ## Features
-- /givepoints, /removepoints, /giverolepoints, /leaderboard
+- /givepoints, /removepoints, /giverolepoints, /leaderboard, /points
 - Owner-only for point issuance/removals
 - JSON persistence via async storage (suitable for small servers)
 - Hybrid commands (prefix + slash) with proper permission checks
@@ -21,6 +21,7 @@ A modular Discord bot for managing Contribution points using slash/hybrid comman
 - `/removepoints <user> <amount> [reason]` — Owner only
 - `/giverolepoints <role> <points> [reason]` — Owner only
 - `/leaderboard [timespan]` — Everyone. Timespan choices: 7 days, 30 days, All time
+- `/points [user] [timespan]` — Everyone. Check your own or another member’s points, with optional timespan
 
 ## Data Persistence
 - Stored in `data/contributions.json`.
