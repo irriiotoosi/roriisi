@@ -29,6 +29,10 @@ A modular Discord bot for managing Contribution points using slash/hybrid comman
 - `/status [user]` — Everyone
 - `/enslave <user>` — Elder only; asks target for confirmation; grants 250 CP and sets Protégé bonus (elder gains 5% on future awards)
 - `/entitle <user> <title>` — Owner only
+- `/shop browse` — Everyone. Browse paged shop (items sorted by cost; copyable keys)
+- `/shop buy <item_key>` — Everyone. Deducts CP and adds the single-use item to your inventory
+- `/item info <item_key>` — Everyone. Shows full description and cost
+- `/item use <item_key> ...` — Everyone. Activates a purchased item; arguments depend on the item
 
 ## Rank Ladder
 - Outer Disciple — 0 CP (starting rank)

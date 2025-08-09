@@ -176,3 +176,73 @@ class JsonContributionStore:
         e2p: Dict[str, str] = lineage.get("elder_to_protege", {})
         protege = e2p.get(str(elder_id))
         return int(protege) if protege is not None else None
+
+    # ---------- Shop purchases (single-use) ----------
+    async def add_purchase(self, guild_id: int, user_id: int, item_key: str, count: int = 1) -> None:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            shop = guild.setdefault("shop", {})
+            inv = shop.setdefault("inventory", {})
+            user_inv = inv.setdefault(str(user_id), {})
+            user_inv[item_key] = int(user_inv.get(item_key, 0)) + int(count)
+            await self._write(data)
+
+    async def get_inventory_count(self, guild_id: int, user_id: int, item_key: str) -> int:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        inv = guild.get("shop", {}).get("inventory", {})
+        user_inv = inv.get(str(user_id), {})
+        return int(user_inv.get(item_key, 0))
+
+    async def consume_item(self, guild_id: int, user_id: int, item_key: str) -> bool:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            shop = guild.setdefault("shop", {})
+            inv = shop.setdefault("inventory", {})
+            user_inv = inv.setdefault(str(user_id), {})
+            current = int(user_inv.get(item_key, 0))
+            if current <= 0:
+                return False
+            if current == 1:
+                user_inv.pop(item_key, None)
+            else:
+                user_inv[item_key] = current - 1
+            await self._write(data)
+            return True
+
+    # ---------- Timed effects ----------
+    async def add_effect(self, guild_id: int, effect: Dict[str, Any]) -> None:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            effects: List[Dict[str, Any]] = guild.setdefault("effects", [])
+            effects.append(effect)
+            await self._write(data)
+
+    async def list_effects(self, guild_id: int) -> List[Dict[str, Any]]:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        return list(guild.get("effects", []))
+
+    async def save_effects(self, guild_id: int, effects: List[Dict[str, Any]]) -> None:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            guild["effects"] = effects
+            await self._write(data)
