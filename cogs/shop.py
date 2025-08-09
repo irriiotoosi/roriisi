@@ -14,6 +14,11 @@ from domain.shop import ShopItem, get_item_by_key, items_sorted_by_cost
 from services.shop_service import ShopService
 
 
+KEY_TO_USE_CMD = {
+    "gift_of_spiritual_transference": "use_gift_transfer",
+}
+
+
 def _now_ts() -> int:
     return int(datetime.now(timezone.utc).timestamp())
 
@@ -101,8 +106,9 @@ class Shop(commands.Cog):
         except Exception:
             await interaction.response.send_message("Purchase failed due to an unexpected error.", ephemeral=True)
             return
+        use_cmd = KEY_TO_USE_CMD.get(item.key, f"use_{item.key}")
         await interaction.response.send_message(
-            f"Purchased {item.display_name}. Use it with `/item use_{item.key}`.")
+            f"Purchased {item.display_name}. Use it with `/item {use_cmd}`.")
 
     # ----- Group: /item -----
     item = app_commands.Group(name="item", description="Item info and activation")
@@ -193,7 +199,7 @@ class Shop(commands.Cog):
             return
         await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
 
-    @item.command(name="use_gift_of_spiritual_transference", description="Use Gift of Spiritual Transference: grant 100 CP to a disciple (Inner/Core)")
+    @item.command(name="use_gift_transfer", description="Use Gift of Spiritual Transference: grant 100 CP to a disciple (Inner/Core)")
     @app_commands.describe(user="Recipient user")
     async def use_gift_of_spiritual_transference(self, interaction: discord.Interaction, user: discord.Member) -> None:
         assert interaction.guild is not None
