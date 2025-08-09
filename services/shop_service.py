@@ -25,7 +25,11 @@ class ShopService:
     async def buy(self, *, guild_id: int, user_id: int, item_key: str) -> PurchaseResult:
         item = get_item_by_key(item_key)
         if item is None:
-            raise ValueError("Unknown item key")
+            raise ValueError("unknown_item")
+        # Balance check: ensure user has at least cost CP (all time total)
+        total = await self.store.get_user_total(guild_id=guild_id, user_id=user_id, since_ts=None)
+        if total < item.cost:
+            raise ValueError("insufficient_points")
         # Deduct cost
         await self.contribution_service.award_points(
             guild_id=guild_id,

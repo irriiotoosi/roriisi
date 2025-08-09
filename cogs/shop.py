@@ -91,10 +91,18 @@ class Shop(commands.Cog):
             return
         try:
             await self.service.buy(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=item.key)
-        except Exception:
-            await interaction.response.send_message("Purchase failed. You may have insufficient points.", ephemeral=True)
+        except ValueError as ve:
+            code = str(ve)
+            if code == "insufficient_points":
+                await interaction.response.send_message("Insufficient Contribution Points for this purchase.", ephemeral=True)
+                return
+            await interaction.response.send_message("Unknown item.", ephemeral=True)
             return
-        await interaction.response.send_message(f"Purchased {item.display_name}. Use it with `/item use {item.key} ...`.")
+        except Exception:
+            await interaction.response.send_message("Purchase failed due to an unexpected error.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"Purchased {item.display_name}. Use it with `/item use_{item.key}`.")
 
     # ----- Group: /item -----
     item = app_commands.Group(name="item", description="Item info and activation")
@@ -109,70 +117,126 @@ class Shop(commands.Cog):
         embed = discord.Embed(title=f"{item.display_name} — {item.cost} CP", description=item.description, color=discord.Color.orange())
         await interaction.response.send_message(embed=embed)
 
-    # ---------- Activation Handlers ----------
-    @item.command(name="use", description="Use an item by key; arguments depend on the item")
-    @app_commands.describe(item_key="Key of the purchased item")
-    async def item_use(self, interaction: discord.Interaction, item_key: str, arg1: Optional[str] = None, arg2: Optional[str] = None, arg3: Optional[str] = None, channel: Optional[discord.TextChannel] = None, user: Optional[discord.Member] = None) -> None:
+    # ---------- Specific Use Subcommands ----------
+    @item.command(name="use_rainbow_spirit_ink", description="Use Rainbow Spirit Ink: set a custom name color for one week")
+    @app_commands.describe(hex="Hex color like #FFAA00")
+    async def use_rainbow_spirit_ink(self, interaction: discord.Interaction, hex: str) -> None:  # noqa: A002
         assert interaction.guild is not None
-        item = get_item_by_key(item_key)
-        if item is None:
-            await interaction.response.send_message("Unknown item.", ephemeral=True)
+        key = "rainbow_spirit_ink"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
             return
-        has = await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=item.key)
-        if not has:
-            await interaction.response.send_message("You do not own this item. Buy it first.", ephemeral=True)
-            return
-        # Dispatch by key
         try:
-            if item.key == "rainbow_spirit_ink":
-                await self._use_rainbow_ink(interaction, hex_color=arg1)
-            elif item.key == "five_elements_silence_seal":
-                if user is None:
-                    await interaction.response.send_message("You must provide a user.", ephemeral=True)
-                    return
-                await self._use_silence_seal(interaction, target=user)
-            elif item.key == "thousand_faces_mask":
-                if user is None or arg1 is None:
-                    await interaction.response.send_message("Provide a user and nickname.", ephemeral=True)
-                    return
-                await self._use_mask(interaction, target=user, nickname=arg1)
-            elif item.key == "temporal_stagnation_field":
-                if channel is None:
-                    await interaction.response.send_message("Provide a channel.", ephemeral=True)
-                    return
-                await self._use_slowmode(interaction, channel=channel)
-            elif item.key == "decree_of_bestowal":
-                if user is None or arg1 is None or arg2 is None:
-                    await interaction.response.send_message("Provide a user, role name, and hex color.", ephemeral=True)
-                    return
-                await self._use_bestowal(interaction, target=user, role_name=arg1, hex_color=arg2)
-            elif item.key == "gift_of_spiritual_transference":
-                if user is None:
-                    await interaction.response.send_message("Provide a recipient user.", ephemeral=True)
-                    return
-                await self._use_transfer(interaction, recipient=user)
-            elif item.key == "domain_usurpation_edict":
-                if channel is None or arg1 is None:
-                    await interaction.response.send_message("Provide a channel and a temporary name.", ephemeral=True)
-                    return
-                await self._use_usurpation(interaction, channel=channel, new_name=arg1)
-            elif item.key == "whispering_realm_mirror":
-                if arg1 is None:
-                    await interaction.response.send_message("Provide a channel name.", ephemeral=True)
-                    return
-                await self._use_mirror(interaction, channel_name=arg1)
-            else:
-                await interaction.response.send_message("This item cannot be used.", ephemeral=True)
-                return
+            await self._use_rainbow_ink(interaction, hex_color=hex)
         except discord.Forbidden:
-            await interaction.response.send_message("I lack required permissions to perform that action.", ephemeral=True)
+            await interaction.response.send_message("I lack permissions to create or assign roles.", ephemeral=True)
             return
-        # Consume after successful activation
-        consumed = await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=item.key)
-        if consumed:
-            await interaction.followup.send(f"Used {item.display_name}.")
-        else:
-            await interaction.followup.send("Failed to consume the item; please contact admins.")
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_five_elements_silence_seal", description="Use Five Elements Silence Seal: timeout a user for 15 minutes")
+    @app_commands.describe(user="Target user (at most Elite Disciple)")
+    async def use_five_elements_silence_seal(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        assert interaction.guild is not None
+        key = "five_elements_silence_seal"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_silence_seal(interaction, target=user)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to timeout the target.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_thousand_faces_mask", description="Use Thousand Faces Mask: change a user's nickname for one hour")
+    @app_commands.describe(user="Target user (not dev or Elder)", nickname="Temporary nickname")
+    async def use_thousand_faces_mask(self, interaction: discord.Interaction, user: discord.Member, nickname: str) -> None:
+        assert interaction.guild is not None
+        key = "thousand_faces_mask"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_mask(interaction, target=user, nickname=nickname)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to change nicknames.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_temporal_stagnation_field", description="Use Temporal Stagnation Field: set 1m slowmode for 20 minutes")
+    @app_commands.describe(channel="Channel to affect")
+    async def use_temporal_stagnation_field(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
+        assert interaction.guild is not None
+        key = "temporal_stagnation_field"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_slowmode(interaction, channel=channel)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to edit the channel.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_decree_of_bestowal", description="Use Decree of Bestowal: grant a temporary role for one week")
+    @app_commands.describe(user="Recipient", rolename="Role name", hex="Hex color like #00FFAA")
+    async def use_decree_of_bestowal(self, interaction: discord.Interaction, user: discord.Member, rolename: str, hex: str) -> None:  # noqa: A002
+        assert interaction.guild is not None
+        key = "decree_of_bestowal"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_bestowal(interaction, target=user, role_name=rolename, hex_color=hex)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to manage roles.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_gift_of_spiritual_transference", description="Use Gift of Spiritual Transference: grant 100 CP to a disciple (Inner/Core)")
+    @app_commands.describe(user="Recipient user")
+    async def use_gift_of_spiritual_transference(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        assert interaction.guild is not None
+        key = "gift_of_spiritual_transference"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_transfer(interaction, recipient=user)
+        except discord.Forbidden:
+            await interaction.response.send_message("Action failed due to missing permissions.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_domain_usurpation_edict", description="Use Domain Usurpation Edict: temporarily rename a channel for one hour")
+    @app_commands.describe(channel="Channel to usurp", new_name="Temporary channel name")
+    async def use_domain_usurpation_edict(self, interaction: discord.Interaction, channel: discord.TextChannel, new_name: str) -> None:
+        assert interaction.guild is not None
+        key = "domain_usurpation_edict"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_usurpation(interaction, channel=channel, new_name=new_name)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to edit the channel.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
+
+    @item.command(name="use_whispering_realm_mirror", description="Use Whispering Realm Mirror: create a 24h temporary channel in Gremlins category")
+    @app_commands.describe(channelname="New channel name")
+    async def use_whispering_realm_mirror(self, interaction: discord.Interaction, channelname: str) -> None:
+        assert interaction.guild is not None
+        key = "whispering_realm_mirror"
+        if not await self.service.has_item(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key):
+            await interaction.response.send_message("You do not own this item.", ephemeral=True)
+            return
+        try:
+            await self._use_mirror(interaction, channel_name=channelname)
+        except discord.Forbidden:
+            await interaction.response.send_message("I lack permissions to create channels.", ephemeral=True)
+            return
+        await self.service.consume(guild_id=interaction.guild.id, user_id=interaction.user.id, item_key=key)
 
     # ----- Effect implementations -----
     async def _use_rainbow_ink(self, interaction: discord.Interaction, *, hex_color: Optional[str]) -> None:
@@ -204,7 +268,8 @@ class Shop(commands.Cog):
             await interaction.response.send_message("Target must be at most Elite Disciple.", ephemeral=True)
             return
         duration = timedelta(minutes=15)
-        await target.timeout(until=discord.utils.utcnow() + duration, reason="Five Elements Silence Seal")
+        # Positional-only argument for 'until'
+        await target.timeout(discord.utils.utcnow() + duration, reason="Five Elements Silence Seal")
         # Announce
         channel = discord.utils.get(interaction.guild.text_channels, name=settings.SEAL_ANNOUNCE_CHANNEL_NAME)
         content = f"{interaction.user.mention} has sealed {target.mention} for 15 minutes."
@@ -258,14 +323,7 @@ class Shop(commands.Cog):
         if rank is None or rank.name not in ("Inner Disciple", "Core Disciple"):
             await interaction.response.send_message("Recipient must be Inner or Core Disciple.", ephemeral=True)
             return
-        # Deduct 120 from sender, add 100 to recipient
-        await self.service.contribution_service.award_points(
-            guild_id=interaction.guild.id,
-            user_id=interaction.user.id,
-            amount=-120,
-            reason="Gift of Spiritual Transference purchase",
-            issuer_id=interaction.user.id,
-        )
+        # Add 100 to recipient (purchase already charged at buy time)
         await self.service.contribution_service.award_points(
             guild_id=interaction.guild.id,
             user_id=recipient.id,
@@ -273,7 +331,7 @@ class Shop(commands.Cog):
             reason="Gift of Spiritual Transference received",
             issuer_id=interaction.user.id,
         )
-        await interaction.response.send_message("Transferred 100 CP to recipient (20 CP tax).")
+        await interaction.response.send_message("Transferred 100 CP to recipient (20 CP tax was paid on purchase).")
 
     async def _use_usurpation(self, interaction: discord.Interaction, *, channel: discord.TextChannel, new_name: str) -> None:
         assert interaction.guild is not None
@@ -362,10 +420,6 @@ class Shop(commands.Cog):
         await self.service.store.save_effects(guild.id, remaining)
 
 
-async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(Shop(bot))
-
-
 class Inventory(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -390,6 +444,6 @@ class Inventory(commands.Cog):
         await ctx.reply(embed=embed)
 
 
-async def setup(bot: commands.Bot) -> None:  # type: ignore[no-redef]
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Shop(bot))
     await bot.add_cog(Inventory(bot))
