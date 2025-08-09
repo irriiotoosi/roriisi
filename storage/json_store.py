@@ -46,6 +46,16 @@ class JsonContributionStore:
         async with aiofiles.open(self.file_path, mode="w", encoding="utf-8") as f:
             await f.write(json.dumps(data, ensure_ascii=False))
 
+    def _ensure_guild_struct(self, data: Dict[str, Any], guild_id: int) -> Dict[str, Any]:
+        guilds = data.setdefault("guilds", {})
+        guild = guilds.setdefault(str(guild_id), {})
+        guild.setdefault("history", [])
+        guild.setdefault("titles", {})
+        lineage = guild.setdefault("lineage", {})
+        lineage.setdefault("protege_to_elder", {})
+        lineage.setdefault("elder_to_protege", {})
+        return guild
+
     async def record_contribution(
         self,
         guild_id: int,
@@ -68,8 +78,7 @@ class JsonContributionStore:
         )
         async with self._lock:
             data = await self._read()
-            guilds = data.setdefault("guilds", {})
-            guild = guilds.setdefault(str(guild_id), {})
+            guild = self._ensure_guild_struct(data, guild_id)
             history: List[Dict[str, Any]] = guild.setdefault("history", [])
             history.append(entry.__dict__)
             await self._write(data)
@@ -111,3 +120,59 @@ class JsonContributionStore:
         # Sort by total desc, then user_id asc for stability
         sorted_items = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
         return sorted_items[:limit]
+
+    # ---------- Titles ----------
+    async def set_title(self, guild_id: int, user_id: int, title: str) -> None:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            titles: Dict[str, str] = guild.setdefault("titles", {})
+            titles[str(user_id)] = title
+            await self._write(data)
+
+    async def get_title(self, guild_id: int, user_id: int) -> Optional[str]:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        titles: Dict[str, str] = guild.get("titles", {})
+        return titles.get(str(user_id))
+
+    # ---------- Lineage (Elder-Protegé) ----------
+    async def set_lineage(self, guild_id: int, elder_id: int, protege_id: int) -> None:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+            guild = self._ensure_guild_struct(data, guild_id)
+            lineage = guild.setdefault("lineage", {})
+            p2e: Dict[str, str] = lineage.setdefault("protege_to_elder", {})
+            e2p: Dict[str, str] = lineage.setdefault("elder_to_protege", {})
+            p2e[str(protege_id)] = str(elder_id)
+            e2p[str(elder_id)] = str(protege_id)
+            await self._write(data)
+
+    async def get_elder_for_protege(self, guild_id: int, protege_id: int) -> Optional[int]:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        lineage = guild.get("lineage", {})
+        p2e: Dict[str, str] = lineage.get("protege_to_elder", {})
+        elder = p2e.get(str(protege_id))
+        return int(elder) if elder is not None else None
+
+    async def get_protege_for_elder(self, guild_id: int, elder_id: int) -> Optional[int]:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        lineage = guild.get("lineage", {})
+        e2p: Dict[str, str] = lineage.get("elder_to_protege", {})
+        protege = e2p.get(str(elder_id))
+        return int(protege) if protege is not None else None

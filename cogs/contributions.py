@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from services.contributions_service import ContributionService
 from storage.json_store import JsonContributionStore
 from utils.embeds import (
     build_leaderboard_embed,
@@ -28,10 +29,12 @@ class Contributions(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.store = JsonContributionStore()
+        self.service = ContributionService(self.store)
         self._ready = False
 
     async def cog_load(self) -> None:
         await self.store.initialize()
+        await self.service.initialize()
         self._ready = True
 
     # -------------- Utility -----------------
@@ -62,7 +65,7 @@ class Contributions(commands.Cog):
             await ctx.reply("Amount must be a positive integer.")
             return
         assert ctx.guild is not None
-        await self.store.record_contribution(
+        await self.service.award_points(
             guild_id=ctx.guild.id,
             user_id=user.id,
             amount=amount,
@@ -93,7 +96,7 @@ class Contributions(commands.Cog):
             await ctx.reply("Amount must be a positive integer.")
             return
         assert ctx.guild is not None
-        await self.store.record_contribution(
+        await self.service.award_points(
             guild_id=ctx.guild.id,
             user_id=user.id,
             amount=-amount,
@@ -128,9 +131,8 @@ class Contributions(commands.Cog):
         if not members:
             await ctx.reply("No non-bot members found in that role.")
             return
-        # Record contributions sequentially to keep write operations simple and safe
         for member in members:
-            await self.store.record_contribution(
+            await self.service.award_points(
                 guild_id=ctx.guild.id,
                 user_id=member.id,
                 amount=points,
@@ -159,7 +161,6 @@ class Contributions(commands.Cog):
         span_value = timespan.value if timespan else "all"
         since = self._compute_since_ts(span_value)
         lb = await self.store.get_leaderboard(guild_id=ctx.guild.id, since_ts=since, limit=10)
-        # Resolve members for display (may be None if user left)
         display_entries = []
         for user_id, total in lb:
             member = ctx.guild.get_member(user_id)
@@ -192,7 +193,6 @@ class Contributions(commands.Cog):
 
     # -------------- Error handling ----------------
     async def cog_command_error(self, ctx: commands.Context, error: Exception) -> None:
-        # Unwrap original error if wrapped by CommandInvokeError
         original = getattr(error, "original", error)
         if isinstance(original, commands.MissingRequiredArgument):
             await ctx.reply(f"Missing argument: {original.param.name}")
@@ -203,7 +203,6 @@ class Contributions(commands.Cog):
         if isinstance(original, commands.CheckFailure):
             await ctx.reply("You don't have permission to use this command.")
             return
-        # Fallback
         await ctx.reply("An unexpected error occurred while processing the command.")
 
 

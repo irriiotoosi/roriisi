@@ -34,6 +34,7 @@ class ContributionBot(commands.Bot):
     async def setup_hook(self) -> None:
         # Load cogs
         await self.load_extension("cogs.contributions")
+        await self.load_extension("cogs.ranks")
 
         # Optionally do a faster, guild-scoped sync in development
         debug_guild_id: Optional[int] = settings.DEBUG_GUILD_ID
