@@ -219,6 +219,17 @@ class JsonContributionStore:
             await self._write(data)
             return True
 
+    async def get_user_inventory(self, guild_id: int, user_id: int) -> Dict[str, int]:
+        if not self._initialized:
+            await self.initialize()
+        async with self._lock:
+            data = await self._read()
+        guild = data.get("guilds", {}).get(str(guild_id), {})
+        inv = guild.get("shop", {}).get("inventory", {})
+        user_inv = inv.get(str(user_id), {})
+        # Normalize counts to ints
+        return {k: int(v) for k, v in user_inv.items()}
+
     # ---------- Timed effects ----------
     async def add_effect(self, guild_id: int, effect: Dict[str, Any]) -> None:
         if not self._initialized:

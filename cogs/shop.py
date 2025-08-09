@@ -364,3 +364,32 @@ class Shop(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Shop(bot))
+
+
+class Inventory(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.service = ShopService()
+
+    async def cog_load(self) -> None:
+        await self.service.initialize()
+
+    @commands.hybrid_command(name="inventory", description="Show your shop inventory")
+    async def inventory(self, ctx: commands.Context) -> None:
+        assert ctx.guild is not None
+        counts = await self.service.get_inventory(guild_id=ctx.guild.id, user_id=ctx.author.id)
+        if not counts:
+            await ctx.reply("Your inventory is empty.")
+            return
+        lines: List[str] = []
+        for key, count in counts.items():
+            item = get_item_by_key(key)
+            name = item.display_name if item else key
+            lines.append(f"{name} — x{count} (key: `{key}`)")
+        embed = discord.Embed(title="Your Inventory", description="\n".join(lines), color=discord.Color.orange())
+        await ctx.reply(embed=embed)
+
+
+async def setup(bot: commands.Bot) -> None:  # type: ignore[no-redef]
+    await bot.add_cog(Shop(bot))
+    await bot.add_cog(Inventory(bot))

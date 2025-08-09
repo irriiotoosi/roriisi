@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 from domain.shop import ShopItem, get_item_by_key
 from services.contributions_service import ContributionService
@@ -44,3 +44,6 @@ class ShopService:
 
     async def consume(self, *, guild_id: int, user_id: int, item_key: str) -> bool:
         return await self.store.consume_item(guild_id, user_id, item_key)
+
+    async def get_inventory(self, *, guild_id: int, user_id: int) -> Dict[str, int]:
+        return await self.store.get_user_inventory(guild_id, user_id)
